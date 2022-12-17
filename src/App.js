@@ -1,93 +1,109 @@
-import React from "react";
-import "./App.css";
-import { Button, Card, Form } from 'react-bootstrap';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React, { useState, useEffect } from "react";
 
+import Todo from "./Todo";
+import Web3 from 'web3';
 
-function Todo({ todo, index, markTodo, removeTodo }) {
-  return (
-    <div
-      className="todo"
-      
-    >
-      <span style={{ textDecoration: todo.isDone ? "line-through" : "" }}>{todo.text}</span>
-      <div>
-        <Button variant="outline-success" onClick={() => markTodo(index)}>✓</Button>{' '}
-        <Button variant="outline-danger" onClick={() => removeTodo(index)}>✕</Button>
-      </div>
-    </div>
-  );
-}
-
-function FormTodo({ addTodo }) {
-  const [value, setValue] = React.useState("");
-
-  const handleSubmit = e => {
-    e.preventDefault();
-    if (!value) return;
-    addTodo(value);
-    setValue("");
-  };
-
-  return (
-    <Form onSubmit={handleSubmit}> 
-    <Form.Group>
-      <Form.Label><b>Add Todo</b></Form.Label>
-      <Form.Control type="text" className="input" value={value} onChange={e => setValue(e.target.value)} placeholder="Add new todo" />
-    </Form.Group>
-    <Button variant="primary mb-3" type="submit">
-      Submit
-    </Button>
-  </Form>
-  );
-}
+import { contractAddress, ABI } from './config';
 
 function App() {
-  const [todos, setTodos] = React.useState([
-    {
-      text: "This is a sampe todo",
-      isDone: false
+
+  const [isConnected, setIsConnected] = useState(false);
+  const [accountAddress, setAccountAddress] = useState('');
+  var [counter, setCounter] = useState();
+
+  const [todos, setTodos] = useState([]);
+
+  useEffect(() => {
+    async function fetchCurrentCount() {
+        var web3 = window.web3;
+        web3 = new Web3(web3.currentProvider);
+        const instance = new web3.eth.Contract(ABI, contractAddress);
+        const userAccount = await web3.eth.getAccounts();
+        const account = userAccount[0];
+        const currentCount = await instance.methods.count().call({ from: account })
+        setCounter(currentCount);
     }
-  ]);
+    fetchCurrentCount();
+  }, []);
 
-  const addTodo = text => {
-    const newTodos = [...todos, { text }];
-    setTodos(newTodos);
+
+  useEffect(() => {
+    async function fetchData() {
+      if (isConnected) {
+        var arr = [];
+        var web3 = window.web3;
+        web3 = new Web3(web3.currentProvider);
+        const instance = new web3.eth.Contract(ABI, contractAddress);
+        const userAccount = await web3.eth.getAccounts();
+        const account = userAccount[0];
+        while (counter >= 0) {
+          const data = await instance.methods.tasksMapping(counter).call({ from: account })
+          arr.push(data)
+          counter--;
+        }
+        setTodos(arr)
+      }
+    }
+
+    fetchData();
+  }, [isConnected]);
+
+  const detectCurrentProvider = () => {
+    let provider;
+    if (window.ethereum) {
+      provider = window.ethereum;
+    } else if (window.web3) {
+      // eslint-disable-next-line
+      provider = window.web3.currentProvider;
+    } else {
+      console.log(
+        'Non-Ethereum browser detected. You should consider trying MetaMask!'
+      );
+    }
+    return provider;
   };
 
-  const markTodo = index => {
-    const newTodos = [...todos];
-    newTodos[index].isDone = true;
-    setTodos(newTodos);
+  const onConnect = async () => {
+    try {
+      const currentProvider = detectCurrentProvider();
+      if (currentProvider) {
+        if (currentProvider !== window.ethereum) {
+          console.log(
+            'Non-Ethereum browser detected. You should consider trying MetaMask!'
+          );
+        }
+        await currentProvider.request({ method: 'eth_requestAccounts' });
+        const web3 = new Web3(currentProvider);
+
+        const userAccount = await web3.eth.getAccounts();
+        const account = userAccount[0];
+        setAccountAddress(account);
+        setIsConnected(true)
+
+        if (userAccount.length === 0) {
+          console.log('Please connect to meta mask');
+        }
+      }
+    } catch (err) {
+      console.log(
+        'There was an error fetching your accounts. Make sure your Ethereum client is configured correctly.'
+      );
+    }
   };
 
-  const removeTodo = index => {
-    const newTodos = [...todos];
-    newTodos.splice(index, 1);
-    setTodos(newTodos);
-  };
 
   return (
     <div className="app">
-      <div className="container">
-        <h1 className="text-center mb-4">Todo List</h1>
-        <FormTodo addTodo={addTodo} />
-        <div>
-          {todos.map((todo, index) => (
-            <Card>
-              <Card.Body>
-                <Todo
-                key={index}
-                index={index}
-                todo={todo}
-                markTodo={markTodo}
-                removeTodo={removeTodo}
-                />
-              </Card.Body>
-            </Card>
-          ))}
+      {!isConnected ? (
+        <div className='bgImg'>
+          <div>
+            <button className="button" onClick={onConnect}>
+              Connect to MetaMask
+            </button>
+          </div>
         </div>
-      </div>
+      ) : <Todo accountAddress={accountAddress} todos={todos} setTodos={setTodos} />
+      }
     </div>
   );
 }
